@@ -1,0 +1,34 @@
+# Parameters for the PAPF Node
+papf_node:
+  ros__parameters:
+
+    # Node-level params
+    lookahead_distance: 15.0
+    voxel_size: 1.0
+    obstacle_point_radius: 0.1
+    virtual_wall_points: 10
+    virtual_wall_distance: 0.5
+
+    # Planning loop
+    max_plan_steps: 300
+    goal_tolerance: 0.5
+
+    # PAPF Planner (APF) params
+    papf.k_att: 0.0
+    papf.d_g: 4.0
+
+    papf.k_rep: 0.9  # Increased from 0.5
+    papf.d_o: 6.0    # Increased from 5.0
+    papf.n: 2
+
+    papf.k_prd: 5.0
+    papf.d_prd: 20.0
+
+    # PAPF Planner (Vehicle) params
+    papf.max_turning_angle_deg: 20.0
+    papf.v_c: 1.5  # Increased from 1.0
+    papf.v_min: 0.5
+    papf.v_max: 3.0  # Increased from 2.0
+    papf.max_acceleration: 1.0
+    papf.max_deceleration: 1.0
+    papf.dt: 0.05
