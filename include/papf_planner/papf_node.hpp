@@ -46,6 +46,8 @@ private:
     
     void publish_obstacle_circles();
     void plan_path(const geometry_msgs::msg::PoseStamped& current_start_pose);
+    void publish_potential_field(const geometry_msgs::msg::PoseStamped& current_pose);
+    
     
 
     // --- New functions for dynamic goal planning ---
@@ -79,6 +81,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscription_; 
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr centerline_publisher_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr goal_marker_publisher_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr potential_field_publisher_;
     std::string global_frame_ = "map";           // Planning frame
 
     // --- TF2 Members ---

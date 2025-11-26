@@ -44,12 +44,19 @@ public:
     PAPF_Planner(Params params);
     void computeStep(USV& usv, const Vector2D& goal, const std::vector<Obstacle>& obstacles);
 
-private:
     Vector2D calculateAttractiveForce(const USV& usv, const Vector2D& goal);
     Vector2D calculateRepulsiveForce(const USV& usv, const std::vector<Obstacle>& obstacles, const Vector2D& goal);
     Vector2D calculatePredictiveForce(const USV& usv, const std::vector<Obstacle>& obstacles);
-    
-    double normalizeAngle(double angle);
 
+    // Helper to get total force for a specific state
+    Vector2D getNetForce(const USV& usv, const Vector2D& goal, const std::vector<Obstacle>& obstacles) {
+        Vector2D f_att = calculateAttractiveForce(usv, goal);
+        Vector2D f_rep = calculateRepulsiveForce(usv, obstacles, goal);
+        Vector2D f_prd = calculatePredictiveForce(usv, obstacles);
+        return f_att + f_rep + f_prd;
+    }
+
+private:
+    double normalizeAngle(double angle);
     Params m_params;
 };

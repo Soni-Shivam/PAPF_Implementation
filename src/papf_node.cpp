@@ -83,6 +83,9 @@ PAPFNode::PAPFNode() : Node("papf_node")
         rclcpp::SensorDataQoS(),
         std::bind(&PAPFNode::lidar_callback, this, _1));
 
+    // Inside PAPFNode::PAPFNode()
+    potential_field_publisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/potential_field_vectors", 10);
+
     // --- Initialize TF2 ---
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -138,6 +141,7 @@ void PAPFNode::lidar_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
     
     // 4. Update the dynamic goal using the new "lookahead" logic
     update_dynamic_goal(msg, current_pose); 
+    publish_potential_field(current_pose);
 
     publish_goal_marker();
     // 5. Try to plan a path from our current pose
@@ -377,6 +381,94 @@ void PAPFNode::publish_obstacle_circles()
  * The pose is already calculated and passed in from lidar_callback.
  * We just check if we have a goal and then call plan_path.
  */
+
+
+void PAPFNode::publish_potential_field(const geometry_msgs::msg::PoseStamped& current_pose)
+{
+    if (!goal_pose_) return;
+
+    visualization_msgs::msg::MarkerArray marker_array;
+    
+    // --- Config ---
+    double grid_width = 6.0;  // meters (size of window to visualize)
+    double resolution = 0.3;  // meters (step size)
+    double z_height = 0.2;    // height of arrows
+    
+    // Initialize temporary planner to calculate physics
+    PAPF_Planner::Params params;
+    params.k_att = this->get_parameter("papf.k_att").as_double();
+    params.d_g = this->get_parameter("papf.d_g").as_double();
+    params.k_rep = this->get_parameter("papf.k_rep").as_double();
+    params.d_o = this->get_parameter("papf.d_o").as_double();
+    params.n = this->get_parameter("papf.n").as_int();
+    params.k_prd = this->get_parameter("papf.k_prd").as_double();
+    params.d_prd = this->get_parameter("papf.d_prd").as_double();
+    // ... (load other necessary params if needed)
+
+    PAPF_Planner viz_planner(params);
+    Vector2D goal(goal_pose_->pose.position.x, goal_pose_->pose.position.y);
+    double robot_yaw = tf2::getYaw(current_pose.pose.orientation);
+
+    int id = 0;
+    
+    // Iterate through a grid centered on the robot
+    for (double dx = -grid_width/2.0; dx <= grid_width/2.0; dx += resolution) {
+        for (double dy = -grid_width/2.0; dy <= grid_width/2.0; dy += resolution) {
+            
+            // Create a "Phantom" USV at this grid point
+            USV phantom_usv;
+            phantom_usv.position.x = current_pose.pose.position.x + dx;
+            phantom_usv.position.y = current_pose.pose.position.y + dy;
+            phantom_usv.yaw = robot_yaw; // Assume phantom has same heading as robot
+            phantom_usv.velocity = 0.0; 
+
+            // Calculate the force acting on this phantom
+            Vector2D net_force = viz_planner.getNetForce(phantom_usv, goal, obstacle_circles_);
+            double force_mag = net_force.magnitude();
+
+            // Normalize force for visualization length (clamp it to look nice)
+            double max_draw_len = 0.4;
+            double scale_factor = 0.05; // Tuning for visual length
+            double arrow_len = std::min(force_mag * scale_factor, max_draw_len);
+
+            if (arrow_len < 0.01) continue; // Don't draw tiny forces
+
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = global_frame_;
+            marker.header.stamp = this->get_clock()->now();
+            marker.ns = "potential_field";
+            marker.id = id++;
+            marker.type = visualization_msgs::msg::Marker::ARROW;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+
+            // Start point of arrow
+            marker.pose.position.x = phantom_usv.position.x;
+            marker.pose.position.y = phantom_usv.position.y;
+            marker.pose.position.z = z_height;
+
+            // Orientation of arrow (Quaternion from Force Vector)
+            double angle = atan2(net_force.y, net_force.x);
+            tf2::Quaternion q;
+            q.setRPY(0, 0, angle);
+            marker.pose.orientation = tf2::toMsg(q);
+
+            marker.scale.x = arrow_len; // Length
+            marker.scale.y = 0.03;      // Shaft width
+            marker.scale.z = 0.03;      // Head width
+
+            // Color Gradient based on Force Type
+            // Blue = Low Force, Red = High Force (Danger)
+            marker.color.a = 0.8;
+            if (force_mag > 50.0) { marker.color.r = 1.0; marker.color.g = 0.0; marker.color.b = 0.0; }
+            else { marker.color.r = 0.0; marker.color.g = 1.0; marker.color.b = 1.0; }
+
+            marker_array.markers.push_back(marker);
+        }
+    }
+    potential_field_publisher_->publish(marker_array);
+}
+
+
 void PAPFNode::try_to_plan_path(const geometry_msgs::msg::PoseStamped& current_pose)
 {
     // planning_enabled_ is already checked in lidar_callback.
